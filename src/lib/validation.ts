@@ -33,8 +33,8 @@ function isValidTanzanianPhone(normalized: string): boolean {
 }
 
 function isValidRegistrationNumber(value: string): boolean {
-  // Reasonably permissive: letters, numbers and slashes, e.g. RU/BAFIT/2024/10000
-  return /^[A-Za-z]{1,10}\/[A-Za-z0-9]{2,15}\/\d{4}\/\d{2,8}$/.test(value.trim());
+  // Must start with RU/ and the year must be 2024 or 2025, e.g. RU/BAFIT/2024/10000
+  return /^RU\/[A-Za-z0-9]{2,15}\/(2024|2025)\/\d{2,8}$/i.test(value.trim());
 }
 
 function isValidFormFourIndex(value: string): boolean {
@@ -61,7 +61,7 @@ export function validateStudentForm(values: StudentFormValues): FormErrors {
     errors.registrationNumber = "Please enter your registration number.";
   } else if (!isValidRegistrationNumber(reg)) {
     errors.registrationNumber =
-      "Please enter a valid registration number, e.g. RU/BAFIT/2024/10000.";
+      "Namba ya usajili lazima ianze na RU/ na iwe ya mwaka 2024 au 2025, mfano RU/BAFIT/2024/10000."; 
   }
 
   const phone = normalizePhoneNumber(values.phoneNumber);
