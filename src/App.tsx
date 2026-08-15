@@ -85,10 +85,7 @@ function AdminApp() {
     let active = true;
     setCheckingAdmin(true);
     supabase
-      .from("admins")
-      .select("email")
-      .eq("email", user.email)
-      .maybeSingle()
+      .rpc("am_i_admin")
       .then(({ data }) => {
         if (active) {
           setIsAdmin(Boolean(data));
