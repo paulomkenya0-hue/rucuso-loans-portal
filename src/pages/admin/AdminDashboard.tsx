@@ -151,6 +151,25 @@ function SubmissionsTab({
   setSelected: (v: Submission | null) => void;
   onRefresh: () => void;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    const { error } = await supabase.from("student_submissions").delete().eq("id", id);
+    setDeleting(false);
+    if (!error) {
+      setConfirmingDelete(false);
+      setSelected(null);
+      onRefresh();
+    }
+  }
+
+  function closeModal() {
+    setSelected(null);
+    setConfirmingDelete(false);
+  }
+
   return (
     <div className="mt-5 space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -253,7 +272,7 @@ function SubmissionsTab({
       {selected && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4"
-          onClick={() => setSelected(null)}
+          onClick={closeModal}
         >
           <div
             className="w-full max-w-md rounded-t-2xl bg-white p-6 shadow-card sm:rounded-2xl"
@@ -274,6 +293,7 @@ function SubmissionsTab({
               />
               <Detail label="Status" value={selected.status} />
             </dl>
+
             <div className="mt-5 flex flex-col gap-2">
               {confirmingDelete ? (
                 <>
@@ -297,7 +317,7 @@ function SubmissionsTab({
                 </>
               ) : (
                 <>
-                  <button className="btn-primary w-full" onClick={() => setSelected(null)}>
+                  <button className="btn-primary w-full" onClick={closeModal}>
                     Funga
                   </button>
                   <button
@@ -309,6 +329,10 @@ function SubmissionsTab({
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -335,7 +359,6 @@ function SettingsTab({ config, onSaved }: { config: AppConfig; onSaved: () => vo
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Deadline input uses local datetime-local format
   const deadlineLocal = useMemo(() => {
     const d = new Date(form.deadline);
     const offset = d.getTimezoneOffset();
