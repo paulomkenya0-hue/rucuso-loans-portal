@@ -274,13 +274,41 @@ function SubmissionsTab({
               />
               <Detail label="Status" value={selected.status} />
             </dl>
-            <button className="btn-primary mt-5 w-full" onClick={() => setSelected(null)}>
-              Funga
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
+            <div className="mt-5 flex flex-col gap-2">
+              {confirmingDelete ? (
+                <>
+                  <p className="rounded-lg bg-maroon-50 p-3 text-sm font-medium text-maroon-700">
+                    Una uhakika? Kitendo hiki hakiwezi kurudishwa.
+                  </p>
+                  <button
+                    className="w-full rounded-lg bg-maroon-700 px-6 py-3 text-sm font-semibold text-white"
+                    onClick={() => handleDelete(selected.id)}
+                    disabled={deleting}
+                  >
+                    {deleting ? "Inafuta..." : "Ndiyo, Futa Kabisa"}
+                  </button>
+                  <button
+                    className="btn-secondary w-full py-3 text-sm"
+                    onClick={() => setConfirmingDelete(false)}
+                    disabled={deleting}
+                  >
+                    Ghairi
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="btn-primary w-full" onClick={() => setSelected(null)}>
+                    Funga
+                  </button>
+                  <button
+                    className="w-full rounded-lg border-2 border-maroon-700 px-6 py-3 text-sm font-semibold text-maroon-700"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    🗑 Delete This Student Information
+                  </button>
+                </>
+              )}
+            </div>
   );
 }
 
