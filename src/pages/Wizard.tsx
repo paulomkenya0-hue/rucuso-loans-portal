@@ -60,7 +60,11 @@ export default function Wizard({
       declaration_accepted: true,
     };
 
-    const { error } = await supabase.from("student_submissions").insert(payload);
+    const { data: inserted, error } = await supabase
+      .from("student_submissions")
+      .insert(payload)
+      .select()
+      .single();
 
     if (error) {
       setSubmitting(false);
