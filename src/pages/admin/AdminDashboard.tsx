@@ -9,7 +9,17 @@ import Header from "../../components/Header";
 import Footer from "../../components/Footer";
 
 type SortKey = "submitted_at" | "full_name";
-type Tab = "submissions" | "settings";
+type Tab = "submissions" | "notifications" | "settings";
+
+interface EmailCampaign {
+  id: string;
+  campaign_type: string;
+  initiated_by: string;
+  recipients_count: number;
+  sent_count: number;
+  failed_count: number;
+  created_at: string;
+}
 
 export default function AdminDashboard({ config }: { config: AppConfig }) {
   const { user, signOut } = useAuth();
@@ -72,16 +82,19 @@ export default function AdminDashboard({ config }: { config: AppConfig }) {
           </button>
         </div>
 
-        <div className="mt-5 flex gap-2 border-b border-ink-200">
+        <div className="mt-5 flex gap-2 overflow-x-auto border-b border-ink-200">
           <TabButton active={tab === "submissions"} onClick={() => setTab("submissions")}>
             Submissions
+          </TabButton>
+          <TabButton active={tab === "notifications"} onClick={() => setTab("notifications")}>
+            Notifications
           </TabButton>
           <TabButton active={tab === "settings"} onClick={() => setTab("settings")}>
             Settings
           </TabButton>
         </div>
 
-        {tab === "submissions" ? (
+        {tab === "submissions" && (
           <SubmissionsTab
             submissions={filtered}
             total={submissions.length}
@@ -96,9 +109,13 @@ export default function AdminDashboard({ config }: { config: AppConfig }) {
             setSelected={setSelected}
             onRefresh={loadSubmissions}
           />
-        ) : (
-          <SettingsTab config={config} onSaved={loadSubmissions} />
         )}
+
+        {tab === "notifications" && (
+          <NotificationsTab totalSubmissions={submissions.length} deadline={config.deadline} />
+        )}
+
+        {tab === "settings" && <SettingsTab config={config} onSaved={loadSubmissions} />}
       </main>
       <Footer />
     </div>
@@ -117,7 +134,7 @@ function TabButton({
   return (
     <button
       onClick={onClick}
-      className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold ${
+      className={`-mb-px whitespace-nowrap border-b-2 px-4 py-2.5 text-sm font-semibold ${
         active ? "border-maroon-700 text-maroon-700" : "border-transparent text-ink-400"
       }`}
     >
@@ -125,6 +142,8 @@ function TabButton({
     </button>
   );
 }
+
+/* ============================== SUBMISSIONS ============================== */
 
 function SubmissionsTab({
   submissions,
@@ -156,9 +175,6 @@ function SubmissionsTab({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showAddStudent, setShowAddStudent] = useState(false);
-  const [bulkSending, setBulkSending] = useState<"reminder" | "thankyou" | null>(null);
-  const [bulkConfirm, setBulkConfirm] = useState<"reminder" | "thankyou" | null>(null);
-  const [bulkMessage, setBulkMessage] = useState<string | null>(null);
 
   async function handleDelete(id: string) {
     setDeleting(true);
@@ -174,21 +190,6 @@ function SubmissionsTab({
   function closeModal() {
     setSelected(null);
     setConfirmingDelete(false);
-  }
-
-  async function handleBulkSend(type: "reminder" | "thankyou") {
-    setBulkSending(type);
-    setBulkMessage(null);
-    const { data, error } = await supabase.functions.invoke("send-bulk-email", {
-      body: { type },
-    });
-    setBulkSending(null);
-    setBulkConfirm(null);
-    if (error) {
-      setBulkMessage("Imeshindikana kutuma email. Tafadhali jaribu tena.");
-    } else {
-      setBulkMessage(`Email zimetumwa kwa wanafunzi ${data?.sent ?? 0}.`);
-    }
   }
 
   return (
@@ -225,10 +226,7 @@ function SubmissionsTab({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <button
-          className="btn-primary px-4 py-2.5 text-sm"
-          onClick={() => setShowAddStudent(true)}
-        >
+        <button className="btn-primary px-4 py-2.5 text-sm" onClick={() => setShowAddStudent(true)}>
           + Add Student
         </button>
         <button
@@ -248,31 +246,6 @@ function SubmissionsTab({
         <button className="btn-secondary px-4 py-2.5 text-sm" onClick={onRefresh}>
           ↻ Refresh
         </button>
-      </div>
-
-      <div className="rounded-xl border border-ink-100 bg-white p-4 shadow-card">
-        <p className="text-xs font-semibold uppercase text-ink-400">
-          Tuma Email kwa Wanafunzi Wote Walioleta Taarifa
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <button
-            className="btn-secondary px-4 py-2.5 text-sm"
-            onClick={() => setBulkConfirm("reminder")}
-            disabled={bulkSending !== null || submissions.length === 0}
-          >
-            📩 Tuma Kumbukumbu ya Deadline
-          </button>
-          <button
-            className="btn-secondary px-4 py-2.5 text-sm"
-            onClick={() => setBulkConfirm("thankyou")}
-            disabled={bulkSending !== null || submissions.length === 0}
-          >
-            📩 Tuma Ahsante kwa Wote
-          </button>
-        </div>
-        {bulkMessage && (
-          <p className="mt-2 text-sm font-medium text-maroon-700">{bulkMessage}</p>
-        )}
       </div>
 
       {loading ? (
@@ -385,41 +358,6 @@ function SubmissionsTab({
         </div>
       )}
 
-      {bulkConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setBulkConfirm(null)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-card"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="font-serif text-lg font-semibold text-ink-900">
-              Una uhakika?
-            </h3>
-            <p className="mt-2 text-sm text-ink-600">
-              Hii itatuma email kwa wanafunzi wote {submissions.length} walioleta taarifa.
-            </p>
-            <div className="mt-5 flex flex-col gap-2">
-              <button
-                className="btn-primary w-full"
-                onClick={() => handleBulkSend(bulkConfirm)}
-                disabled={bulkSending !== null}
-              >
-                {bulkSending ? "Inatuma..." : "Ndiyo, Tuma"}
-              </button>
-              <button
-                className="btn-secondary w-full"
-                onClick={() => setBulkConfirm(null)}
-                disabled={bulkSending !== null}
-              >
-                Ghairi
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {showAddStudent && (
         <AddStudentModal
           onClose={() => setShowAddStudent(false)}
@@ -433,13 +371,7 @@ function SubmissionsTab({
   );
 }
 
-function AddStudentModal({
-  onClose,
-  onAdded,
-}: {
-  onClose: () => void;
-  onAdded: () => void;
-}) {
+function AddStudentModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const [email, setEmail] = useState("");
   const [values, setValues] = useState<StudentFormValues>({
     fullName: "",
@@ -458,17 +390,14 @@ function AddStudentModal({
   async function handleSubmit() {
     const fieldErrors = validateStudentForm(values);
 
-    // Admin anaweza kuongeza wanafunzi wa miaka ya nyuma (2022/2023 n.k.) —
-    // hairuhusiwi tu kuwa registration number iwe tupu.
     if (!values.registrationNumber.trim()) {
       fieldErrors.registrationNumber = "Please enter your registration number.";
     } else {
       delete fieldErrors.registrationNumber;
     }
 
-    const emailError = !email.trim() || !email.includes("@")
-      ? "Weka email sahihi ya mwanafunzi."
-      : undefined;
+    const emailError =
+      !email.trim() || !email.includes("@") ? "Weka email sahihi ya mwanafunzi." : undefined;
     setErrors({ ...fieldErrors, email: emailError });
     if (hasErrors(fieldErrors) || emailError) return;
 
@@ -486,7 +415,11 @@ function AddStudentModal({
       status: "admin_added",
     };
 
-    const { error } = await supabase.from("student_submissions").insert(payload);
+    const { data: inserted, error } = await supabase
+      .from("student_submissions")
+      .insert(payload)
+      .select()
+      .single();
     setSaving(false);
 
     if (error) {
@@ -494,10 +427,13 @@ function AddStudentModal({
       return;
     }
 
-    // Tuma email ya taarifa kwa mwanafunzi (haizuii kukamilisha hata ikiharibika)
     supabase.functions
       .invoke("send-confirmation-email", {
-        body: { to: payload.google_email, fullName: payload.full_name },
+        body: {
+          to: payload.google_email,
+          fullName: payload.full_name,
+          submissionId: inserted?.id ?? null,
+        },
       })
       .catch(() => {});
 
@@ -515,8 +451,7 @@ function AddStudentModal({
       >
         <h3 className="font-serif text-lg font-semibold text-ink-900">Add Student</h3>
         <p className="mt-1 text-sm text-ink-500">
-          Ongeza taarifa za mwanafunzi moja kwa moja. Email yake itatumiwa jumbe la
-          uthibitisho.
+          Ongeza taarifa za mwanafunzi moja kwa moja. Email yake itatumiwa jumbe la uthibitisho.
         </p>
 
         <div className="mt-4 space-y-4">
@@ -613,6 +548,249 @@ function StatCard({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
+
+/* ============================== NOTIFICATIONS ============================== */
+
+function NotificationsTab({
+  totalSubmissions,
+  deadline,
+}: {
+  totalSubmissions: number;
+  deadline: string;
+}) {
+  const deadlinePassed = new Date(deadline).getTime() < Date.now();
+
+  const [testEmail, setTestEmail] = useState("");
+  const [testSending, setTestSending] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
+
+  const [confirmType, setConfirmType] = useState<"reminder" | "thankyou" | null>(null);
+  const [sendingType, setSendingType] = useState<"reminder" | "thankyou" | null>(null);
+  const [campaignMessage, setCampaignMessage] = useState<string | null>(null);
+
+  const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
+  const [loadingCampaigns, setLoadingCampaigns] = useState(true);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadCampaigns();
+  }, []);
+
+  async function loadCampaigns() {
+    setLoadingCampaigns(true);
+    const { data } = await supabase
+      .from("email_campaigns")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (data) setCampaigns(data as EmailCampaign[]);
+    setLoadingCampaigns(false);
+  }
+
+  async function handleSendTest() {
+    if (!testEmail.trim() || !testEmail.includes("@")) {
+      setTestResult({ ok: false, message: "Weka email sahihi." });
+      return;
+    }
+    setTestSending(true);
+    setTestResult(null);
+    const { data, error } = await supabase.functions.invoke("send-test-email", {
+      body: { to: testEmail.trim() },
+    });
+    setTestSending(false);
+    if (error || !data?.success) {
+      setTestResult({
+        ok: false,
+        message: "The email could not be sent. Please check the email configuration.",
+      });
+    } else {
+      setTestResult({ ok: true, message: "Test email accepted by the email provider." });
+    }
+  }
+
+  async function handleSendCampaign(type: "reminder" | "thankyou") {
+    setSendingType(type);
+    setCampaignMessage(null);
+    const { data, error } = await supabase.functions.invoke("send-campaign-email", {
+      body: { type },
+    });
+    setSendingType(null);
+    setConfirmType(null);
+    if (error) {
+      setCampaignMessage("Imeshindikana kutuma. Tafadhali jaribu tena.");
+    } else {
+      setCampaignMessage(
+        `Imekamilika: ${data.sent} zimetumwa, ${data.failed} zimeshindwa (kati ya ${totalSubmissions}).`
+      );
+    }
+    loadCampaigns();
+  }
+
+  async function handleRetry(campaignId: string) {
+    setRetryingId(campaignId);
+    const { data, error } = await supabase.functions.invoke("send-campaign-email", {
+      body: { retryCampaignId: campaignId },
+    });
+    setRetryingId(null);
+    if (!error && data) {
+      setCampaignMessage(`Retry: ${data.sent} zimefanikiwa, ${data.failed} bado zimeshindwa.`);
+    }
+    loadCampaigns();
+  }
+
+  return (
+    <div className="mt-5 space-y-5">
+      {/* TEST EMAIL */}
+      <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card">
+        <h2 className="font-serif text-base font-semibold text-ink-900">Send Test Email</h2>
+        <p className="mt-1 text-sm text-ink-500">
+          Tuma email ya majaribio kabla ya kutuma kwa wanafunzi wote.
+        </p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            className="field-input sm:flex-1"
+            placeholder="jaribio@gmail.com"
+            value={testEmail}
+            onChange={(e) => setTestEmail(e.target.value)}
+          />
+          <button
+            className="btn-secondary px-5 py-3.5 text-sm"
+            onClick={handleSendTest}
+            disabled={testSending}
+          >
+            {testSending ? "Inatuma..." : "Send Test Email"}
+          </button>
+        </div>
+        {testResult && (
+          <p
+            className={`mt-2 text-sm font-medium ${
+              testResult.ok ? "text-green-700" : "text-maroon-700"
+            }`}
+          >
+            {testResult.ok ? "✅ " : "❌ "}
+            {testResult.message}
+          </p>
+        )}
+      </div>
+
+      {/* CAMPAIGNS */}
+      <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card">
+        <h2 className="font-serif text-base font-semibold text-ink-900">Mass Notifications</h2>
+        <p className="mt-1 text-sm text-ink-500">
+          Wapokeaji: <span className="font-semibold text-ink-800">{totalSubmissions}</span>{" "}
+          wanafunzi walioleta taarifa.
+        </p>
+
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <button
+            className="btn-secondary flex-1 px-4 py-3 text-sm"
+            onClick={() => setConfirmType("reminder")}
+            disabled={sendingType !== null || totalSubmissions === 0}
+          >
+            📩 Tuma Kumbukumbu ya Deadline
+          </button>
+          <button
+            className="btn-secondary flex-1 px-4 py-3 text-sm"
+            onClick={() => setConfirmType("thankyou")}
+            disabled={sendingType !== null || totalSubmissions === 0 || !deadlinePassed}
+          >
+            📩 Tuma Ahsante kwa Wote
+          </button>
+        </div>
+        {!deadlinePassed && (
+          <p className="mt-2 text-xs text-ink-400">
+            Thank-you communication will be available after the submission deadline.
+          </p>
+        )}
+        {campaignMessage && (
+          <p className="mt-2 text-sm font-medium text-maroon-700">{campaignMessage}</p>
+        )}
+      </div>
+
+      {/* HISTORY */}
+      <div className="rounded-xl border border-ink-100 bg-white p-5 shadow-card">
+        <h2 className="font-serif text-base font-semibold text-ink-900">Campaign History</h2>
+        {loadingCampaigns ? (
+          <p className="mt-3 text-sm text-ink-400">Inapakia...</p>
+        ) : campaigns.length === 0 ? (
+          <p className="mt-3 text-sm text-ink-400">Hakuna campaign iliyotumwa bado.</p>
+        ) : (
+          <div className="mt-3 space-y-3">
+            {campaigns.map((c) => (
+              <div key={c.id} className="rounded-lg border border-ink-100 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-ink-900">
+                    {c.campaign_type === "thankyou" ? "Ahsante" : "Kumbukumbu ya Deadline"}
+                  </p>
+                  <p className="text-xs text-ink-400">
+                    {new Date(c.created_at).toLocaleString("en-GB", {
+                      timeZone: "Africa/Dar_es_Salaam",
+                    })}
+                  </p>
+                </div>
+                <p className="mt-1 text-xs text-ink-500">Na: {c.initiated_by}</p>
+                <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                  <span className="text-ink-600">Wapokeaji: {c.recipients_count}</span>
+                  <span className="text-green-700">Zimetumwa: {c.sent_count}</span>
+                  <span className="text-maroon-700">Zimeshindwa: {c.failed_count}</span>
+                </div>
+                {c.failed_count > 0 && (
+                  <button
+                    className="btn-secondary mt-3 w-full py-2 text-xs"
+                    onClick={() => handleRetry(c.id)}
+                    disabled={retryingId !== null}
+                  >
+                    {retryingId === c.id ? "Inajaribu tena..." : "🔁 Retry Failed Emails"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {confirmType && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setConfirmType(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-serif text-lg font-semibold text-ink-900">
+              Are you sure you want to send this to all eligible students?
+            </h3>
+            <p className="mt-2 text-sm text-ink-600">
+              You are about to send this message to {totalSubmissions} students.
+            </p>
+            <p className="mt-2 text-sm font-medium text-ink-800">
+              I understand that this will send an email to all eligible recipients.
+            </p>
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                className="btn-primary w-full"
+                onClick={() => handleSendCampaign(confirmType)}
+                disabled={sendingType !== null}
+              >
+                {sendingType ? "Inatuma..." : "Ndiyo, Tuma"}
+              </button>
+              <button
+                className="btn-secondary w-full"
+                onClick={() => setConfirmType(null)}
+                disabled={sendingType !== null}
+              >
+                Ghairi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ============================== SETTINGS ============================== */
 
 function SettingsTab({ config, onSaved }: { config: AppConfig; onSaved: () => void }) {
   const [form, setForm] = useState(config);
