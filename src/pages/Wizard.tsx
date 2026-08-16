@@ -85,7 +85,11 @@ export default function Wizard({
 
    // Tuma email ya uthibitisho (kama itashindikana, submission bado imehifadhiwa)
     supabase.functions.invoke("send-confirmation-email", {
-      body: { to: payload.google_email, fullName: payload.full_name },
+      body: {
+        to: payload.google_email,
+        fullName: payload.full_name,
+        submissionId: inserted?.id ?? null,
+      },
     }).catch(() => {});
 
     setSubmitting(false);
