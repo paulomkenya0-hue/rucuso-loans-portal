@@ -457,6 +457,15 @@ function AddStudentModal({
 
   async function handleSubmit() {
     const fieldErrors = validateStudentForm(values);
+
+    // Admin anaweza kuongeza wanafunzi wa miaka ya nyuma (2022/2023 n.k.) —
+    // hairuhusiwi tu kuwa registration number iwe tupu.
+    if (!values.registrationNumber.trim()) {
+      fieldErrors.registrationNumber = "Please enter your registration number.";
+    } else {
+      delete fieldErrors.registrationNumber;
+    }
+
     const emailError = !email.trim() || !email.includes("@")
       ? "Weka email sahihi ya mwanafunzi."
       : undefined;
