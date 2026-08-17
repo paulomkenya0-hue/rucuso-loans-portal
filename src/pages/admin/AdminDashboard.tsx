@@ -567,6 +567,7 @@ function NotificationsTab({
   const [confirmType, setConfirmType] = useState<"reminder" | "thankyou" | null>(null);
   const [sendingType, setSendingType] = useState<"reminder" | "thankyou" | null>(null);
   const [campaignMessage, setCampaignMessage] = useState<string | null>(null);
+  const [polling, setPolling] = useState(false);
 
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
   const [loadingCampaigns, setLoadingCampaigns] = useState(true);
@@ -575,6 +576,28 @@ function NotificationsTab({
   useEffect(() => {
     loadCampaigns();
   }, []);
+
+  useEffect(() => {
+    if (!polling) return;
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from("email_campaigns")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(5);
+      if (data) {
+        setCampaigns(data as EmailCampaign[]);
+        const latest = data[0] as EmailCampaign | undefined;
+        if (latest && latest.sent_count + latest.failed_count >= latest.recipients_count) {
+          setPolling(false);
+          setCampaignMessage(
+            `Imekamilika: ${latest.sent_count} zimetumwa, ${latest.failed_count} zimeshindwa (kati ya ${latest.recipients_count}).`
+          );
+        }
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [polling]);
 
   async function loadCampaigns() {
     setLoadingCampaigns(true);
@@ -617,23 +640,25 @@ function NotificationsTab({
     setSendingType(null);
     setConfirmType(null);
     if (error) {
-      setCampaignMessage("Imeshindikana kutuma. Tafadhali jaribu tena.");
+      setCampaignMessage("Imeshindikana kuanza kutuma. Tafadhali jaribu tena.");
     } else {
       setCampaignMessage(
-        `Imekamilika: ${data.sent} zimetumwa, ${data.failed} zimeshindwa (kati ya ${totalSubmissions}).`
+        `Ombi limeanza kutuma kwa wanafunzi ${data?.total ?? totalSubmissions}. Subiri, inaendelea kutuma chinichini...`
       );
+      setPolling(true);
     }
     loadCampaigns();
   }
 
   async function handleRetry(campaignId: string) {
     setRetryingId(campaignId);
-    const { data, error } = await supabase.functions.invoke("send-campaign-email", {
+    const { error } = await supabase.functions.invoke("send-campaign-email", {
       body: { retryCampaignId: campaignId },
     });
     setRetryingId(null);
-    if (!error && data) {
-      setCampaignMessage(`Retry: ${data.sent} zimefanikiwa, ${data.failed} bado zimeshindwa.`);
+    if (!error) {
+      setCampaignMessage("Retry imeanza, inaendelea chinichini...");
+      setPolling(true);
     }
     loadCampaigns();
   }
@@ -685,14 +710,16 @@ function NotificationsTab({
           <button
             className="btn-secondary flex-1 px-4 py-3 text-sm"
             onClick={() => setConfirmType("reminder")}
-            disabled={sendingType !== null || totalSubmissions === 0}
+            disabled={sendingType !== null || polling || totalSubmissions === 0}
           >
             📩 Tuma Kumbukumbu ya Deadline
           </button>
           <button
             className="btn-secondary flex-1 px-4 py-3 text-sm"
             onClick={() => setConfirmType("thankyou")}
-            disabled={sendingType !== null || totalSubmissions === 0 || !deadlinePassed}
+            disabled={
+              sendingType !== null || polling || totalSubmissions === 0 || !deadlinePassed
+            }
           >
             📩 Tuma Ahsante kwa Wote
           </button>
@@ -705,6 +732,11 @@ function NotificationsTab({
         {campaignMessage && (
           <p className="mt-2 text-sm font-medium text-maroon-700">{campaignMessage}</p>
         )}
+        {polling && (
+          <p className="mt-1 text-xs text-ink-400">
+            ⏳ Inaendelea kutuma... ukurasa unajirefresh yenyewe kila baada ya sekunde 4.
+          </p>
+        )}
       </div>
 
       {/* HISTORY */}
@@ -716,35 +748,43 @@ function NotificationsTab({
           <p className="mt-3 text-sm text-ink-400">Hakuna campaign iliyotumwa bado.</p>
         ) : (
           <div className="mt-3 space-y-3">
-            {campaigns.map((c) => (
-              <div key={c.id} className="rounded-lg border border-ink-100 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-ink-900">
-                    {c.campaign_type === "thankyou" ? "Ahsante" : "Kumbukumbu ya Deadline"}
-                  </p>
-                  <p className="text-xs text-ink-400">
-                    {new Date(c.created_at).toLocaleString("en-GB", {
-                      timeZone: "Africa/Dar_es_Salaam",
-                    })}
-                  </p>
+            {campaigns.map((c) => {
+              const inProgress = c.sent_count + c.failed_count < c.recipients_count;
+              return (
+                <div key={c.id} className="rounded-lg border border-ink-100 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-ink-900">
+                      {c.campaign_type === "thankyou" ? "Ahsante" : "Kumbukumbu ya Deadline"}
+                      {inProgress && (
+                        <span className="ml-2 rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-bold uppercase text-gold-700">
+                          Inaendelea
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-xs text-ink-400">
+                      {new Date(c.created_at).toLocaleString("en-GB", {
+                        timeZone: "Africa/Dar_es_Salaam",
+                      })}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-xs text-ink-500">Na: {c.initiated_by}</p>
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                    <span className="text-ink-600">Wapokeaji: {c.recipients_count}</span>
+                    <span className="text-green-700">Zimetumwa: {c.sent_count}</span>
+                    <span className="text-maroon-700">Zimeshindwa: {c.failed_count}</span>
+                  </div>
+                  {c.failed_count > 0 && !inProgress && (
+                    <button
+                      className="btn-secondary mt-3 w-full py-2 text-xs"
+                      onClick={() => handleRetry(c.id)}
+                      disabled={retryingId !== null || polling}
+                    >
+                      {retryingId === c.id ? "Inaanzisha..." : "🔁 Retry Failed Emails"}
+                    </button>
+                  )}
                 </div>
-                <p className="mt-1 text-xs text-ink-500">Na: {c.initiated_by}</p>
-                <div className="mt-2 flex flex-wrap gap-3 text-xs">
-                  <span className="text-ink-600">Wapokeaji: {c.recipients_count}</span>
-                  <span className="text-green-700">Zimetumwa: {c.sent_count}</span>
-                  <span className="text-maroon-700">Zimeshindwa: {c.failed_count}</span>
-                </div>
-                {c.failed_count > 0 && (
-                  <button
-                    className="btn-secondary mt-3 w-full py-2 text-xs"
-                    onClick={() => handleRetry(c.id)}
-                    disabled={retryingId !== null}
-                  >
-                    {retryingId === c.id ? "Inajaribu tena..." : "🔁 Retry Failed Emails"}
-                  </button>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -773,7 +813,7 @@ function NotificationsTab({
                 onClick={() => handleSendCampaign(confirmType)}
                 disabled={sendingType !== null}
               >
-                {sendingType ? "Inatuma..." : "Ndiyo, Tuma"}
+                {sendingType ? "Inaanzisha..." : "Ndiyo, Tuma"}
               </button>
               <button
                 className="btn-secondary w-full"
